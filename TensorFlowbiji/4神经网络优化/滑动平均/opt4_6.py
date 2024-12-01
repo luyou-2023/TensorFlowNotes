@@ -1,56 +1,52 @@
-# coding:utf-8
 import tensorflow as tf
 
-# 1.定义变量及滑动平均类
-# 定义一个32位浮点变量，初始值为0.0 这个代码就是不断更新w1参数，优化w1参数，滑动平均做了一个w1的影子
-w1 = tf.Variable(0, dtype=tf.float32)
-# 定义num_updates(NN的迭代轮数) 初始值为0， 不可以被优化(训练)，这个参数不被训练
+# 1. 定义变量及滑动平均类
+w1 = tf.Variable(0.0, dtype=tf.float32)
 global_step = tf.Variable(0, trainable=False)
-# 实例化滑动平均类，给删减率为0.99，当前轮数global_step
+
 MOVING_AVERAGE_DECAY = 0.99
-ema = tf.train.ExponentialMovingAverage(MOVING_AVERAGE_DECAY, global_step)
-# ema.apply后的括号里是更新列表，每次运行sess.run(ema_op)时，对更新列表中的元素求滑动平均值
-# 在实际应用中会使用tf.trainable_variable()自动将所有待训练的参数汇总为列表
-# ema_op = ema.apply([w1])
-ema_op = ema.apply(tf.trainable_variables())
+# 使用 tf.train.ExponentialMovingAverage 替代并用 tf.keras.optimizers 更新滑动平均
+ema = tf.keras.layers.experimental.preprocessing.ExponentialMovingAverage(MOVING_AVERAGE_DECAY)
 
-# 2.查看不同迭代中变量取值的变化
-with tf.Session() as sess:
-    # 初始化
-    init_op = tf.global_variables_initializer()
-    sess.run(init_op)
-    # 用ema.average(w1)获取w1滑动平均值(要运行多个节点，作为列表中的元素列出，写在sess.run中)
-    # 打印出当前参数w1和w1滑动平均值
-    print(sess.run([w1, ema.average(w1)]))
+# 2. 使用 Eager Execution 查看不同迭代中变量的变化
+# 直接计算值，不需要通过 Session
+def print_values():
+    print(f"w1: {w1.numpy()} , ema.average(w1): {ema(w1).numpy()}")
 
-    # 参数w1的值赋为1
-    sess.run(tf.assign(w1, 1))
-    sess.run(ema_op)
-    print(sess.run([w1, ema.average(w1)]))
+# 初始化变量并进行测试
+print_values()
 
-    # 更新step和w1的值，模拟出100轮迭代后，参数w1变为10
-    sess.run(tf.assign(global_step, 100))
-    sess.run(tf.assign(w1, 10))
-    sess.run(ema_op)
-    print(sess.run([w1, ema.average(w1)]))
+# 更新 w1 的值为 1
+w1.assign(1.0)
+ema.apply([w1])  # 更新滑动平均
+print_values()
 
-    # 每次sess.run会更新一次w1滑动平均值
-    sess.run(ema_op)
-    print(sess.run([w1, ema.average(w1)]))
+# 设置 global_step 并更新 w1 的值为 10
+global_step.assign(100)
+w1.assign(10.0)
+ema.apply([w1])  # 更新滑动平均
+print_values()
 
-    sess.run(ema_op)
-    print(sess.run([w1, ema.average(w1)]))
+# 多次运行，观察滑动平均值变化
+for i in range(7):
+    ema.apply([w1])
+    print(f"第{i+1}次运行: ")
+    print_values()
 
-    sess.run(ema_op)
-    print(sess.run([w1, ema.average(w1)]))
+# 3. 测试快速追随
+MOVING_AVERAGE_DECAY = 0.1
+ema_fast = tf.keras.layers.experimental.preprocessing.ExponentialMovingAverage(MOVING_AVERAGE_DECAY)
 
-    sess.run(ema_op)
-    print(sess.run([w1, ema.average(w1)]))
+# 初始化并进行测试
+w1.assign(1.0)
+ema_fast.apply([w1])
+print_values()
 
-    sess.run(ema_op)
-    print(sess.run([w1, ema.average(w1)]))
+w1.assign(10.0)
+ema_fast.apply([w1])
+print_values()
 
-    sess.run(ema_op)
-    print(sess.run([w1, ema.average(w1)]))
-
-# 更改MOVING_AVERAGE_DECAY 为 0.1， 看影子追随速度
+for i in range(7):
+    ema_fast.apply([w1])
+    print(f"第{i+1}次运行: ")
+    print_values()

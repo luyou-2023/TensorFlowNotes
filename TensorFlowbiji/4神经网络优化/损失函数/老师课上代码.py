@@ -1,39 +1,48 @@
-# coding:utf-8
-# 预测多或预测少的影响一样
-# 0导入模块，生成数据集
 import tensorflow as tf
 import numpy as np
+
+# 参数定义
 BATCH_SIZE = 8
 SEED = 23455
+STEPS = 80000
 
-rdm = np.random.RandomState(SEED)  # 使用RandomState()获得numpy的随机数生成器
-X = rdm.rand(32, 2)  # 产生一个32行2列的数组，用作输入
-Y_ = [[x1 + x2 + (rdm.rand() / 10.0 - 0.05)] for (x1, x2) in X]
-#rdm.rand()生成0-1的随机数，左闭右开
+# 数据生成
+rdm = np.random.RandomState(SEED)
+X = rdm.rand(32, 2)  # 输入
+Y_ = np.array([[x1 + x2 + (rdm.rand() / 10.0 - 0.05)] for (x1, x2) in X])  # 输出
 
-# 1定义神经网络的输入、参数和输出，定义前向传播过程
-x = tf.placeholder(tf.float32, shape=(None, 2))
-y_ = tf.placeholder(tf.float32, shape=(None, 1))
-w1 = tf.Variable(tf.random_normal([2, 1], stddev=1, seed=1))
-y = tf.matmul(x, w1)
+# 定义模型
+class SimpleModel(tf.keras.Model):
+    def __init__(self):
+        super(SimpleModel, self).__init__()
+        self.w1 = tf.Variable(tf.random.normal([2, 1], stddev=1, seed=1), trainable=True)
 
-# 2定义损失函数以及反向传播方法
-# 定义损失函数为MSE，反向传播方法为梯度下降
-loss_mse = tf.reduce_mean(tf.square(y_ - y))
-train_step = tf.train.GradientDescentOptimizer(0.001).minimize(loss_mse)
+    def call(self, inputs):
+        return tf.matmul(inputs, self.w1)
 
-# 3生成会话，训练STEPS轮
-with tf.Session() as sess:
-    init_op = tf.global_variables_initializer()
-    sess.run(init_op)
-    STEPS = 80000
-    for i in range(STEPS):
-        start = (i * BATCH_SIZE) % 32
-        end = start + BATCH_SIZE
-        sess.run(train_step, feed_dict={x: X[start:end], y_: Y_[start:end]})
-        if i % 500 == 0:
-            print("After %d training steps, w1 is: " % i)
-            print(sess.run(w1), "\n")
-    print("Final w1 is: \n", sess.run(w1))
-# 课后任务：在本代码中尝试其他反向传播方法，看对收敛速度的影响，把体会写到笔记中
+model = SimpleModel()
 
+# 损失函数和优化器
+loss_fn = tf.keras.losses.MeanSquaredError()
+optimizer = tf.keras.optimizers.SGD(learning_rate=0.001)
+
+# 训练过程
+for step in range(STEPS):
+    start = (step * BATCH_SIZE) % 32
+    end = start + BATCH_SIZE
+    X_batch = X[start:end]
+    Y_batch = Y_[start:end]
+
+    with tf.GradientTape() as tape:
+        predictions = model(X_batch)
+        loss = loss_fn(Y_batch, predictions)
+
+    gradients = tape.gradient(loss, model.trainable_variables)
+    optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+
+    # 每隔 500 步打印权重和损失
+    if step % 500 == 0:
+        print(f"Step {step}, w1: \n{model.w1.numpy()}, loss: {loss.numpy()}")
+
+# 最终权重
+print("Final w1: \n", model.w1.numpy())
